@@ -20,7 +20,6 @@ import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
-import android.content.res.TypedArray;
 import android.media.MediaDataSource;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
@@ -43,9 +42,6 @@ public class AlphaMovieView extends GLTextureView {
 
     private static final String TAG = "VideoSurfaceView";
 
-    private static final float VIEW_ASPECT_RATIO = 4f / 3f;
-    private float videoAspectRatio = VIEW_ASPECT_RATIO;
-
     VideoRenderer renderer;
     private MediaPlayer mediaPlayer;
 
@@ -56,6 +52,8 @@ public class AlphaMovieView extends GLTextureView {
     private boolean isDataSourceSet;
 
     private PlayerState state = PlayerState.NOT_PREPARED;
+    private int mVideoWidth;
+    private int mVideoHeight;
 
     public AlphaMovieView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -72,8 +70,6 @@ public class AlphaMovieView extends GLTextureView {
         initMediaPlayer();
 
         renderer = new VideoRenderer();
-
-        obtainRendererOptions(attrs);
 
         this.addOnSurfacePrepareListener();
         setRenderer(renderer);
@@ -97,25 +93,6 @@ public class AlphaMovieView extends GLTextureView {
                 }
             }
         });
-    }
-
-    private void obtainRendererOptions(AttributeSet attrs) {
-        if (attrs != null) {
-            TypedArray arr = getContext().obtainStyledAttributes(attrs, R.styleable.AlphaMovieView);
-            int alphaColor = arr.getColor(R.styleable.AlphaMovieView_alphaColor, NOT_DEFINED_COLOR);
-            if (alphaColor != NOT_DEFINED_COLOR) {
-                renderer.setAlphaColor(alphaColor);
-            }
-            String shader = arr.getString(R.styleable.AlphaMovieView_shader);
-            if (shader != null) {
-                renderer.setCustomShader(shader);
-            }
-            float accuracy = arr.getFloat(R.styleable.AlphaMovieView_accuracy, NOT_DEFINED);
-            if (accuracy != NOT_DEFINED) {
-                renderer.setAccuracy(accuracy);
-            }
-            arr.recycle();
-        }
     }
 
     private void addOnSurfacePrepareListener() {
@@ -143,43 +120,63 @@ public class AlphaMovieView extends GLTextureView {
         });
     }
 
-    private void calculateVideoAspectRatio(int videoWidth, int videoHeight) {
-        if (videoWidth > 0 && videoHeight > 0) {
-            videoAspectRatio = (float) videoWidth / videoHeight;
-        }
-
-        requestLayout();
-        invalidate();
-    }
-
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        int videoWidth = mVideoWidth;
+        int videoHeight = mVideoHeight;
+        if (videoWidth == 0 || videoHeight == 0) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            return;
+        }
+
+        float videoAspectRatio = (float) videoWidth / videoHeight;
+
         int widthMode = MeasureSpec.getMode(widthMeasureSpec);
         int heightMode = MeasureSpec.getMode(heightMeasureSpec);
         int widthSize = MeasureSpec.getSize(widthMeasureSpec);
         int heightSize = MeasureSpec.getSize(heightMeasureSpec);
 
-        double currentAspectRatio = (double) widthSize / heightSize;
-        if (currentAspectRatio > videoAspectRatio) {
-            widthSize = (int) (heightSize * videoAspectRatio);
-        } else {
-            heightSize = (int) (widthSize / videoAspectRatio);
+        if (widthMode != MeasureSpec.EXACTLY ||
+            heightMode != MeasureSpec.EXACTLY ||
+            widthSize == 0 ||
+            heightSize == 0) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            return;
         }
 
-        super.onMeasure(MeasureSpec.makeMeasureSpec(widthSize, widthMode),
-                MeasureSpec.makeMeasureSpec(heightSize, heightMode));
+        //int desiredWidth = getSuggestedMinimumWidth() + getPaddingLeft() + getPaddingRight();
+        //int desiredHeight = getSuggestedMinimumHeight() + getPaddingTop() + getPaddingBottom();
+
+        float aspectRatio = (float) widthSize / heightSize;
+
+        int targetWidth = widthSize;
+        int targetHeight = heightSize;
+
+        if (aspectRatio > videoAspectRatio) {
+            targetHeight = (int) (widthSize / videoAspectRatio);
+        } else {
+            targetWidth = (int) (heightSize * videoAspectRatio);
+        }
+
+        setMeasuredDimension(targetWidth, targetHeight);
     }
 
     private void onDataSourceSet(MediaMetadataRetriever retriever) {
-        int videoWidth = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
-        int videoHeight = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
+        mVideoWidth = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
+        mVideoHeight = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
 
-        calculateVideoAspectRatio(videoWidth, videoHeight);
+        requestLayout();
+        invalidate();
+
         isDataSourceSet = true;
 
         if (isSurfaceCreated) {
             prepareAndStartMediaPlayer();
         }
+    }
+
+    public void setShader(Shader shader) {
+        renderer.setShader(shader);
     }
 
     public void setVideoFromAssets(String assetsFileName) {
@@ -293,7 +290,7 @@ public class AlphaMovieView extends GLTextureView {
 
     private void prepareAsync(final MediaPlayer.OnPreparedListener onPreparedListener) {
         if (mediaPlayer != null && state == PlayerState.NOT_PREPARED
-                || state == PlayerState.STOPPED) {
+            || state == PlayerState.STOPPED) {
             mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                 @Override
                 public void onPrepared(MediaPlayer mp) {
@@ -350,8 +347,12 @@ public class AlphaMovieView extends GLTextureView {
     }
 
     public void reset() {
-        if (mediaPlayer != null && (state == PlayerState.STARTED || state == PlayerState.PAUSED ||
-                state == PlayerState.STOPPED)) {
+        if (mediaPlayer != null && (
+            state == PlayerState.STARTED ||
+                state == PlayerState.PAUSED ||
+                state == PlayerState.STOPPED ||
+                state == PlayerState.NOT_PREPARED
+        )) {
             mediaPlayer.reset();
             state = PlayerState.NOT_PREPARED;
         }
@@ -400,7 +401,7 @@ public class AlphaMovieView extends GLTextureView {
         mediaPlayer.setScreenOnWhilePlaying(screenOn);
     }
 
-    public void setOnErrorListener(MediaPlayer.OnErrorListener onErrorListener){
+    public void setOnErrorListener(MediaPlayer.OnErrorListener onErrorListener) {
         mediaPlayer.setOnErrorListener(onErrorListener);
     }
 
@@ -420,15 +421,15 @@ public class AlphaMovieView extends GLTextureView {
         return mediaPlayer;
     }
 
+    private enum PlayerState {
+        NOT_PREPARED, PREPARED, STARTED, PAUSED, STOPPED, RELEASE
+    }
+
     public interface OnVideoStartedListener {
         void onVideoStarted();
     }
 
     public interface OnVideoEndedListener {
         void onVideoEnded();
-    }
-
-    private enum PlayerState {
-        NOT_PREPARED, PREPARED, STARTED, PAUSED, STOPPED, RELEASE
     }
 }
