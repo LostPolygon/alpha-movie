@@ -7,10 +7,10 @@ public class AdvancedChromaKeyShader extends ShaderBase {
     private final float[] uMaskYCrCbCache = new float[3];
 
     private int mChromaKeyColor;
-    private float mThresholdSensitivity;
+    private float mSensitivity;
     private float mSmoothing;
 
-    private volatile int uThresholdSensitivityHandle;
+    private volatile int uSensitivityHandle;
     private volatile int uSmoothingHandle;
     private volatile int uMaskYCrCbHandle;
 
@@ -22,12 +22,12 @@ public class AdvancedChromaKeyShader extends ShaderBase {
         mChromaKeyColor = chromaKeyColor;
     }
 
-    public float getThresholdSensitivity() {
-        return mThresholdSensitivity;
+    public float getSensitivity() {
+        return mSensitivity;
     }
 
-    public void setThresholdSensitivity(float thresholdSensitivity) {
-        mThresholdSensitivity = Math.max(0, Math.min(1, thresholdSensitivity));
+    public void setSensitivity(float sensitivity) {
+        mSensitivity = Math.max(0, Math.min(1, sensitivity));
     }
 
     public float getSmoothing() {
@@ -45,7 +45,7 @@ public class AdvancedChromaKeyShader extends ShaderBase {
                 "precision mediump float;\n" +
                 "varying vec2 vTextureCoord;\n" +
                 "uniform samplerExternalOES sTexture;\n" +
-                "uniform mediump float uThresholdSensitivity;\n" +
+                "uniform mediump float uSensitivity;\n" +
                 "uniform mediump float uSmoothing;\n" +
                 "uniform vec3 uMaskYCrCb;\n" +
                 "\n" +
@@ -56,14 +56,14 @@ public class AdvancedChromaKeyShader extends ShaderBase {
                 "  float Cr = 0.7132 * (textureColor.r - Y);\n" +
                 "  float Cb = 0.5647 * (textureColor.b - Y);\n" +
                 "  \n" +
-                "  float blendValue = smoothstep(uThresholdSensitivity, uThresholdSensitivity + uSmoothing, distance(vec2(Cr, Cb), vec2(uMaskYCrCb.r, uMaskYCrCb.b)));\n" +
+                "  float blendValue = smoothstep(uSensitivity, uSensitivity + uSmoothing, distance(vec2(Cr, Cb), vec2(uMaskYCrCb.r, uMaskYCrCb.b)));\n" +
                 "  gl_FragColor = vec4(textureColor.rgb, textureColor.a * blendValue);\n" +
                 "}";
     }
 
     @Override
     public void getUniformLocations(int programID) {
-        uThresholdSensitivityHandle = getUniformLocation(programID, "uThresholdSensitivity");
+        uSensitivityHandle = getUniformLocation(programID, "uSensitivity");
         uSmoothingHandle = getUniformLocation(programID, "uSmoothing");
         uMaskYCrCbHandle = getUniformLocation(programID, "uMaskYCrCb");
     }
@@ -82,8 +82,8 @@ public class AdvancedChromaKeyShader extends ShaderBase {
         uMaskYCrCbCache[1] = chromaKeyCr;
         uMaskYCrCbCache[2] = chromaKeyCb;
 
-        GLES20.glUniform1f(uThresholdSensitivityHandle, mThresholdSensitivity);
-        GLUtility.checkGlError("glUniform1f uThresholdSensitivityHandle");
+        GLES20.glUniform1f(uSensitivityHandle, mSensitivity);
+        GLUtility.checkGlError("glUniform1f uSensitivity");
         GLES20.glUniform1f(uSmoothingHandle, mSmoothing);
         GLUtility.checkGlError("glUniform1f uSmoothing");
         GLES20.glUniform3fv(uMaskYCrCbHandle, 1, uMaskYCrCbCache, 0);
